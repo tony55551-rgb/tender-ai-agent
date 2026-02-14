@@ -12,9 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: HIDE ADMIN TOOLS ---
-# This hides the "Manage App" button and the "Hamburger Menu"
-# But keeps the Sidebar visible and usable.
+# --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -25,7 +23,7 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- 3. VOUCHER SYSTEM ---
+# --- 3. ACCESS CODE SYSTEM ---
 def get_valid_keys():
     try:
         keys = st.secrets.get("access_keys")
@@ -53,10 +51,11 @@ def check_password():
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
-        st.info("Enter your Access Voucher to begin.")
-        st.text_input("Voucher Code", type="password", on_change=password_entered, key="password")
+        st.info("Authorized Personnel Only.")
+        # UPDATED TEXT HERE:
+        st.text_input("Enter your access code", type="password", on_change=password_entered, key="password")
         if "password_correct" in st.session_state:
-            st.error("❌ Invalid Voucher.")
+            st.error("❌ Invalid Access Code.")
     return False
 
 if not check_password():
@@ -119,12 +118,17 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR ---
+# --- SIDEBAR (RESTORED THE "SYSTEM ONLINE" LOOK) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
-    st.success(f"✅ User: {st.session_state.get('used_key', 'Admin')}")
+    st.success("✅ System Online")
+    
+    # Display the Access Code used (masked or partial)
+    user_key = st.session_state.get('used_key', 'Admin')
+    st.caption(f"Logged in as: **{user_key}**")
     
     st.markdown("---")
+    st.markdown("### ⚙️ **Configuration**")
     language = st.selectbox("Output Language", ["English", "Hindi", "Telugu"])
     
     api_key = st.secrets.get("GOOGLE_API_KEY")
@@ -142,11 +146,12 @@ with st.sidebar:
     
     st.markdown("---")
     st.caption("Secured by Google Cloud")
+    # BRANDING RESTORED
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: ROBUST GENERATOR (Fixed Syntax) ---
+# --- HELPER: ROBUST GENERATOR (Anti-Crash) ---
 def generate_safe(prompt, file_content):
-    # We define the models list on one line to prevent syntax errors
+    # Try 4 different models to bypass traffic
     models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-lite-001', 'gemini-1.5-pro']
     
     status_placeholder = st.empty()
@@ -157,18 +162,18 @@ def generate_safe(prompt, file_content):
             return model.generate_content([prompt, file_content])
         except exceptions.ResourceExhausted:
             time.sleep(1)
-            continue
+            continue # Try next model
         except Exception:
             continue
             
-    # If all fail, show warning
-    status_placeholder.warning("🚦 High Traffic. Retrying with backup...")
-    time.sleep(5)
+    # If all fail, wait and retry
+    status_placeholder.warning("🚦 High Traffic. Switching lines...")
+    time.sleep(10)
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model.generate_content([prompt, file_content])
     except:
-        st.error("❌ Servers are busy. Please wait 1 minute.")
+        st.error("❌ All AI servers are busy. Please wait 2 minutes.")
         return None
 
 # --- MAIN APP ---
