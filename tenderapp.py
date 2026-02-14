@@ -1,9 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
 import time
+from google.api_core import exceptions
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="TenderAI Pro", page_icon="🇮🇳", layout="wide")
+st.set_page_config(page_title="TenderAI Enterprise", page_icon="🏢", layout="wide")
 
 # --- AUTHENTICATION ---
 MASTER_PASSWORD = st.secrets.get("APP_PASSWORD", "TenderKing2026") 
@@ -38,32 +39,40 @@ with st.sidebar:
         st.stop()
     genai.configure(api_key=api_key)
     
-    # Reset Button to clear memory
     if st.button("🔄 Start New Tender"):
         for key in list(st.session_state.keys()):
-            if key != 'password_correct': # Keep logged in
+            if key != 'password_correct': 
                 del st.session_state[key]
         st.rerun()
 
-# --- MAIN APP ---
-st.title("🇮🇳 AI Tender Assistant (Persistent)")
+# --- HELPER: SMART GENERATOR WITH RETRY ---
+def generate_smart(model, prompt, file_content, status_text):
+    """Tries to generate content. If it hits a rate limit, it waits 60s and retries."""
+    try:
+        return model.generate_content([prompt, file_content])
+    except exceptions.ResourceExhausted:
+        status_text.warning("🚦 Traffic Jam (Rate Limit). Pausing for 60 seconds to cool down...")
+        time.sleep(60) # The "Penalty Box" wait
+        status_text.info("🔄 Resuming...")
+        return model.generate_content([prompt, file_content]) # Retry once
+    except Exception as e:
+        status_text.error(f"Error: {e}")
+        return None
 
-# 1. Initialize Memory (Session State)
-# This ensures variables exist even if we haven't generated them yet
-if "summary" not in st.session_state:
-    st.session_state.summary = None
-if "compliance" not in st.session_state:
-    st.session_state.compliance = None
-if "letter" not in st.session_state:
-    st.session_state.letter = None
-if "myfile" not in st.session_state:
-    st.session_state.myfile = None
+# --- MAIN APP ---
+st.title("🇮🇳 AI Tender Assistant (Anti-Crash Mode)")
+
+# 1. Initialize Memory
+if "summary" not in st.session_state: st.session_state.summary = None
+if "compliance" not in st.session_state: st.session_state.compliance = None
+if "letter" not in st.session_state: st.session_state.letter = None
+if "myfile" not in st.session_state: st.session_state.myfile = None
 
 # 2. File Uploader
 uploaded_file = st.file_uploader("Upload Tender PDF", type="pdf")
 
 if uploaded_file:
-    # Upload to Gemini (Only once per file)
+    # Upload to Gemini (Only once)
     if st.session_state.myfile is None:
         with st.spinner("📤 Uploading to AI Brain..."):
             try:
@@ -81,51 +90,65 @@ if uploaded_file:
                 st.error(f"Upload failed: {e}")
 
     # 3. The "Run" Button
-    # Only show button if we haven't generated results yet
     if st.session_state.summary is None and st.session_state.myfile:
         if st.button("🚀 Run Full Analysis"):
             model = genai.GenerativeModel('gemini-2.5-flash')
+            progress_bar = st.progress(0)
+            status_text = st.empty()
             
             # --- STEP A: SUMMARY ---
-            with st.spinner("Generating Summary..."):
-                prompt1 = f"Extract Project Name, EMD, Deadline, Turnover, and Experience. Translate to {language}."
-                response1 = model.generate_content([prompt1, st.session_state.myfile])
-                st.session_state.summary = response1.text # SAVE TO MEMORY
+            status_text.text("1/3 Generating Summary...")
+            prompt1 = f"Extract Project Name, EMD, Deadline, Turnover, and Experience. Translate to {language}."
+            res1 = generate_smart(model, prompt1, st.session_state.myfile, status_text)
+            if res1: st.session_state.summary = res1.text
+            progress_bar.progress(33)
+            
+            time.sleep(4) # BREATHE (Prevents Crash)
 
             # --- STEP B: COMPLIANCE ---
-            with st.spinner("Checking Compliance..."):
-                prompt2 = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status."
-                response2 = model.generate_content([prompt2, st.session_state.myfile])
-                st.session_state.compliance = response2.text # SAVE TO MEMORY
+            status_text.text("2/3 Checking Compliance...")
+            prompt2 = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status."
+            res2 = generate_smart(model, prompt2, st.session_state.myfile, status_text)
+            if res2: st.session_state.compliance = res2.text
+            progress_bar.progress(66)
+
+            time.sleep(4) # BREATHE (Prevents Crash)
 
             # --- STEP C: LETTER ---
-            with st.spinner("Drafting Letter..."):
-                prompt3 = f"Write a formal Bid Submission Letter in {language}."
-                response3 = model.generate_content([prompt3, st.session_state.myfile])
-                st.session_state.letter = response3.text # SAVE TO MEMORY
+            status_text.text("3/3 Drafting Letter...")
+            prompt3 = f"Write a formal Bid Submission Letter in {language}."
+            res3 = generate_smart(model, prompt3, st.session_state.myfile, status_text)
+            if res3: st.session_state.letter = res3.text
+            progress_bar.progress(100)
             
-            st.rerun() # Refresh page to show results
+            status_text.success("✅ Analysis Complete!")
+            time.sleep(1)
+            st.rerun()
 
-# 4. Display Results (Reads from Memory)
+# 4. Display Results
 if st.session_state.summary:
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary", "✅ Compliance", "📝 Draft Letter", "💬 Chat"])
     
     with tab1:
         st.subheader(f"Executive Summary ({language})")
-        st.markdown(st.session_state.summary) # Read from memory
+        st.markdown(st.session_state.summary)
     
     with tab2:
         st.subheader("Compliance Matrix")
-        st.markdown(st.session_state.compliance) # Read from memory
+        st.markdown(st.session_state.compliance)
     
     with tab3:
         st.subheader("Bid Submission Letter")
-        st.text_area("Copy this:", st.session_state.letter, height=400) # Read from memory
+        st.text_area("Copy this:", st.session_state.letter, height=400)
     
     with tab4:
         st.subheader("Ask the Tender")
         user_q = st.text_input("Ask a question:")
         if user_q:
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            res = model.generate_content([f"Answer in {language}: {user_q}", st.session_state.myfile])
-            st.write(res.text)
+            # Separate retry logic for chat
+            try:
+                model = genai.GenerativeModel('gemini-2.5-flash')
+                res = model.generate_content([f"Answer in {language}: {user_q}", st.session_state.myfile])
+                st.write(res.text)
+            except exceptions.ResourceExhausted:
+                st.warning("🚦 Traffic Jam. Please wait 30 seconds before asking again.")
