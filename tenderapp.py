@@ -9,37 +9,30 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded" # Forces the Left Bar to open by default
+    initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: HIDE ADMIN TOOLS ---
-# This hides the "Manage App" button, Hamburger Menu, and Footer
-# But keeps the Sidebar visible and professional.
+# --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
 hide_st_style = """
             <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
             .stAppDeployButton {display:none;}
+            footer {visibility: hidden;}
+            [data-testid="stToolbar"] {visibility: hidden;}
+            .viewerBadge_container__1QSob {display: none;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- 3. SECURE ACCESS SYSTEM (No Hardcoded Passwords) ---
+# --- 3. SECURE ACCESS SYSTEM ---
 def get_valid_keys():
-    # 1. Try to get the LIST of codes from Secrets
     try:
         keys = st.secrets.get("access_keys")
         if keys:
-            # If it's a single string, wrap it in a list
             if isinstance(keys, str): return [keys]
             return keys
     except:
         pass
-    
-    # 2. IF NO SECRETS FOUND: Stop the app.
-    # This prevents unauthorized access if secrets aren't set up.
-    return [] 
+    return []
 
 def check_password():
     if st.session_state.get("password_correct", False):
@@ -47,13 +40,10 @@ def check_password():
 
     def password_entered():
         valid_keys = get_valid_keys()
-        
-        # Security Check: If no keys are configured in Secrets
         if not valid_keys:
-            st.error("⚠️ System Error: Access Keys not configured in Secrets.")
+            st.error("⚠️ System Configuration Error: No Access Keys found in Secrets.")
             return
 
-        # Check if the entered password matches ANY key in the list
         if st.session_state["password"] in valid_keys:
             st.session_state["password_correct"] = True
             st.session_state["used_key"] = st.session_state["password"] 
@@ -66,13 +56,9 @@ def check_password():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
         st.info("Authorized Personnel Only.")
-        
-        # INPUT FIELD
         st.text_input("Enter your access code", type="password", on_change=password_entered, key="password")
-        
         if "password_correct" in st.session_state:
             st.error("❌ Invalid Access Code.")
-            
     return False
 
 if not check_password():
@@ -88,7 +74,6 @@ class PDF(FPDF):
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
-        # COPYRIGHT IN PDF
         self.cell(0, 10, f'© 2026 ynotAIagent bundles | Page {self.page_no()}', 0, 0, 'C')
 
 def create_pdf(summary, compliance, letter, chat_history):
@@ -136,12 +121,11 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- PROFESSIONAL SIDEBAR ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
     
-    # Display User Info
     user_key = st.session_state.get('used_key', 'Admin')
     st.caption(f"Logged in as: **{user_key}**")
     
@@ -158,44 +142,47 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🔄 Reset / New Project", use_container_width=True):
         for key in list(st.session_state.keys()):
-            # Keep login details, clear everything else
             if key not in ['password_correct', 'used_key']: 
                 del st.session_state[key]
         st.rerun()
     
     st.markdown("---")
     st.caption("Secured by Google Cloud")
-    # COPYRIGHT IN SIDEBAR
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: ROBUST GENERATOR (Traffic Fix) ---
+# --- HELPER: SLOW & STEADY GENERATOR ---
 def generate_safe(prompt, file_content):
-    # Try 4 different models to find a free lane
-    models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-lite-001', 'gemini-1.5-pro']
+    # We use ONLY the Lite model first because it's the fastest and has highest limits
+    models = ['gemini-2.0-flash-lite-001', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
     
-    status_placeholder = st.empty()
+    status_box = st.empty()
     
     for model_name in models:
         try:
+            # Add a small delay BEFORE asking to let the server breathe
+            time.sleep(2) 
             model = genai.GenerativeModel(model_name)
             return model.generate_content([prompt, file_content])
+            
         except exceptions.ResourceExhausted:
-            time.sleep(1)
-            continue # Try next model
+            status_box.warning(f"🚦 Traffic on {model_name}. Switching lanes (Wait 5s)...")
+            time.sleep(5) # Mandatory wait
+            continue
+            
         except Exception:
             continue
             
-    # If all fail, wait and retry
-    status_placeholder.warning("🚦 High Traffic. Switching lines...")
-    time.sleep(10)
+    # Final Hail Mary
+    status_box.error("❌ Servers are full. Waiting 15 seconds to retry automatically...")
+    time.sleep(15)
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model.generate_content([prompt, file_content])
     except:
-        st.error("❌ All AI servers are busy. Please wait 2 minutes.")
+        st.error("⚠️ Google API Quota Exceeded. Please try again in 2 minutes.")
         return None
 
-# --- MAIN APP LAYOUT ---
+# --- MAIN APP ---
 col_hero_1, col_hero_2 = st.columns([3, 1])
 with col_hero_1:
     st.title("🇮🇳 Tender Intelligence Suite")
@@ -252,7 +239,7 @@ else:
             st.markdown(st.session_state.summary)
         else:
             if st.button("🚀 Generate Summary", type="primary"):
-                with st.spinner("Analyzing..."):
+                with st.spinner("Analyzing... (This may take 10s to clear traffic)"):
                     prompt = f"Extract Project Name, EMD (in Rs), Deadline, Turnover, and Experience. Translate to {language}. Replace symbol '₹' with 'Rs.'."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
