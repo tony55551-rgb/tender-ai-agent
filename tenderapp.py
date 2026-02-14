@@ -12,26 +12,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: PERMANENT SIDEBAR & HIDDEN ADMIN ---
+# --- 2. CSS HACKS: LOCK SIDEBAR & HIDE ADMIN ---
 hide_st_style = """
             <style>
-            /* 1. HIDE THE SIDEBAR COLLAPSE BUTTON (The << Arrow) */
-            [data-testid="stSidebarCollapseButton"] {
-                display: none !important;
-            }
-            
-            /* 2. Hide the top left 'collapsed' control just in case */
-            [data-testid="collapsedControl"] {
-                display: none !important;
-            }
-
-            /* 3. Hide the 'Deploy' button */
+            [data-testid="stSidebarCollapseButton"] {display: none !important;}
+            [data-testid="collapsedControl"] {display: none !important;}
             .stAppDeployButton {display:none;}
-            
-            /* 4. Hide the 'Made with Streamlit' footer */
             footer {visibility: hidden;}
-            
-            /* 5. Hide the 'Manage App' toolbar */
             [data-testid="stToolbar"] {visibility: hidden;}
             </style>
             """
@@ -135,11 +122,10 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR (LOCKED OPEN) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
-    
     user_key = st.session_state.get('used_key', 'Admin')
     st.caption(f"Logged in as: **{user_key}**")
     
@@ -157,40 +143,40 @@ with st.sidebar:
     st.caption("Secured by Google Cloud")
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: CACHED GENERATOR (Saves Quota) ---
-# This function remembers the answer. If you ask the same thing twice, 
-# it returns the saved answer instantly without calling Google.
-@st.cache_data(show_spinner=False)
-def get_ai_response(prompt, _file_content, model_name="gemini-1.5-flash"):
-    model = genai.GenerativeModel(model_name)
-    # 3-Second safety delay
-    time.sleep(3)
-    return model.generate_content([prompt, _file_content]).text
-
+# --- HEAVY DUTY TRAFFIC HANDLER ---
+# This function retries 3 times with increasing delays
 def generate_safe(prompt, file_content):
-    status_placeholder = st.empty()
+    # Models to try in order of speed/reliability
+    models = ['gemini-2.0-flash-lite-001', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
     
-    # Try the Lite model first (Fastest)
-    try:
-        return get_ai_response(prompt, file_content, "gemini-2.0-flash-lite-001")
-    except Exception:
-        pass
-        
-    # Try Flash (Standard)
-    try:
-        status_placeholder.info("🔄 Optimizing connection...")
-        return get_ai_response(prompt, file_content, "gemini-1.5-flash")
-    except Exception:
-        pass
-
-    # Final Attempt
-    try:
-        status_placeholder.warning("🚦 High traffic. Retrying in 5s...")
-        time.sleep(5)
-        return get_ai_response(prompt, file_content, "gemini-1.5-flash-8b")
-    except:
-        status_placeholder.error("❌ High Traffic Error. Please wait 2 minutes.")
-        return None
+    status_box = st.empty()
+    
+    # Try each model
+    for model_name in models:
+        # Retry loop for EACH model (3 attempts)
+        for attempt in range(3):
+            try:
+                # Exponential Backoff: Wait 2s, then 4s, then 8s
+                wait_time = 2 * (attempt + 1)
+                time.sleep(wait_time)
+                
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content([prompt, file_content])
+                
+                # Success! Clear warning and return text
+                status_box.empty()
+                return response
+                
+            except exceptions.ResourceExhausted:
+                status_box.warning(f"🚦 Traffic jam on {model_name}. Retrying in {wait_time}s...")
+                continue # Try next attempt
+            except Exception as e:
+                # If it's not a traffic error, maybe try next model
+                break 
+    
+    # If ALL models and ALL retries fail:
+    status_box.error("❌ Daily Quota Limit Reached. Please try again tomorrow or use a new API Key.")
+    return None
 
 # --- MAIN APP ---
 col_hero_1, col_hero_2 = st.columns([3, 1])
@@ -198,12 +184,9 @@ with col_hero_1:
     st.title("🇮🇳 Tender Intelligence Suite")
     st.markdown("**Automated Analysis • Compliance Checks • Bid Drafting**")
 
-# Reset Button (Top Right)
 with col_hero_2:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🔄 New Project"):
-        # Clear cache and session state
-        st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if key not in ['password_correct', 'used_key']: 
                 del st.session_state[key]
@@ -264,7 +247,7 @@ else:
                     prompt = f"Extract Project Name, EMD (in Rs), Deadline, Turnover, and Experience. Translate to {language}. Replace symbol '₹' with 'Rs.'."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
-                        st.session_state.summary = res
+                        st.session_state.summary = res.text
                         st.rerun()
 
     # --- TAB 2: COMPLIANCE ---
@@ -278,7 +261,7 @@ else:
                     prompt = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status. Replace symbol '₹' with 'Rs.'."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
-                        st.session_state.compliance = res
+                        st.session_state.compliance = res.text
                         st.rerun()
 
     # --- TAB 3: LETTER ---
@@ -292,7 +275,7 @@ else:
                     prompt = f"Write a formal Bid Submission Letter in {language}."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
-                        st.session_state.letter = res
+                        st.session_state.letter = res.text
                         st.rerun()
 
     # --- TAB 4: CHAT ---
@@ -313,7 +296,7 @@ else:
                     with st.spinner("Thinking..."):
                         res = generate_safe(f"Answer in {language}. Replace '₹' with 'Rs.': {user_q}", st.session_state.myfile)
                         if res:
-                            st.session_state.chat_history.append((user_q, res))
+                            st.session_state.chat_history.append((user_q, res.text))
                             st.rerun()
 
     # --- TAB 5: DOWNLOAD ---
