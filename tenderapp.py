@@ -4,7 +4,7 @@ import time
 from google.api_core import exceptions
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="TenderAI Enterprise", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="TenderAI Lite", page_icon="⚡", layout="wide")
 
 # --- AUTHENTICATION ---
 MASTER_PASSWORD = st.secrets.get("APP_PASSWORD", "TenderKing2026") 
@@ -45,22 +45,31 @@ with st.sidebar:
                 del st.session_state[key]
         st.rerun()
 
-# --- HELPER: SMART GENERATOR WITH RETRY ---
+# --- HELPER: ROBUST GENERATOR WITH COUNTDOWN ---
 def generate_smart(model, prompt, file_content, status_text):
-    """Tries to generate content. If it hits a rate limit, it waits 60s and retries."""
+    """Retries with a visual countdown if the server is busy."""
     try:
         return model.generate_content([prompt, file_content])
     except exceptions.ResourceExhausted:
-        status_text.warning("🚦 Traffic Jam (Rate Limit). Pausing for 60 seconds to cool down...")
-        time.sleep(60) # The "Penalty Box" wait
-        status_text.info("🔄 Resuming...")
-        return model.generate_content([prompt, file_content]) # Retry once
+        # If busy, we wait 30 seconds with a visual timer
+        status_text.warning("🚦 Server Busy. Switching to queue...")
+        progress_bar = status_text.progress(0)
+        for i in range(30):
+            time.sleep(1)
+            progress_bar.progress((i + 1) / 30)
+        
+        status_text.info("🔄 Retrying now...")
+        try:
+            return model.generate_content([prompt, file_content]) # Retry 1
+        except:
+            status_text.error("❌ Server is too busy right now. Please try again in 5 minutes.")
+            return None
     except Exception as e:
         status_text.error(f"Error: {e}")
         return None
 
 # --- MAIN APP ---
-st.title("🇮🇳 AI Tender Assistant (Anti-Crash Mode)")
+st.title("⚡ AI Tender Assistant (Lite Speed)")
 
 # 1. Initialize Memory
 if "summary" not in st.session_state: st.session_state.summary = None
@@ -91,9 +100,10 @@ if uploaded_file:
 
     # 3. The "Run" Button
     if st.session_state.summary is None and st.session_state.myfile:
-        if st.button("🚀 Run Full Analysis"):
-            model = genai.GenerativeModel('gemini-2.5-flash')
-            progress_bar = st.progress(0)
+        if st.button("🚀 Run Analysis (Lite Mode)"):
+            # SWITCHING TO THE LITE MODEL
+            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+            
             status_text = st.empty()
             
             # --- STEP A: SUMMARY ---
@@ -101,25 +111,22 @@ if uploaded_file:
             prompt1 = f"Extract Project Name, EMD, Deadline, Turnover, and Experience. Translate to {language}."
             res1 = generate_smart(model, prompt1, st.session_state.myfile, status_text)
             if res1: st.session_state.summary = res1.text
-            progress_bar.progress(33)
             
-            time.sleep(4) # BREATHE (Prevents Crash)
+            time.sleep(2) # Short breath
 
             # --- STEP B: COMPLIANCE ---
             status_text.text("2/3 Checking Compliance...")
             prompt2 = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status."
             res2 = generate_smart(model, prompt2, st.session_state.myfile, status_text)
             if res2: st.session_state.compliance = res2.text
-            progress_bar.progress(66)
 
-            time.sleep(4) # BREATHE (Prevents Crash)
+            time.sleep(2) # Short breath
 
             # --- STEP C: LETTER ---
             status_text.text("3/3 Drafting Letter...")
             prompt3 = f"Write a formal Bid Submission Letter in {language}."
             res3 = generate_smart(model, prompt3, st.session_state.myfile, status_text)
             if res3: st.session_state.letter = res3.text
-            progress_bar.progress(100)
             
             status_text.success("✅ Analysis Complete!")
             time.sleep(1)
@@ -145,10 +152,10 @@ if st.session_state.summary:
         st.subheader("Ask the Tender")
         user_q = st.text_input("Ask a question:")
         if user_q:
-            # Separate retry logic for chat
             try:
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                # Chat uses the Lite model too for speed
+                model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
                 res = model.generate_content([f"Answer in {language}: {user_q}", st.session_state.myfile])
                 st.write(res.text)
-            except exceptions.ResourceExhausted:
-                st.warning("🚦 Traffic Jam. Please wait 30 seconds before asking again.")
+            except:
+                st.error("Server Busy. Try again in a moment.")
