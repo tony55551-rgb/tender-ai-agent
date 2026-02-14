@@ -9,23 +9,31 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded" # This asks it to be open, but the arrow allows re-opening
+    initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: THE "SMART" GHOST MODE ---
-# FIX: We do NOT hide the 'header' anymore, so the Sidebar Arrow (>) remains visible.
-# We ONLY hide the 'Deploy' button and the Footer.
+# --- 2. CSS HACKS: LOCK SIDEBAR & HIDE ADMIN ---
+# This CSS performs surgery on the interface to remove specific buttons.
 hide_st_style = """
             <style>
-            /* 1. Hide the 'Deploy' button specifically */
+            /* 1. Hide the "Close Sidebar" Arrow Button */
+            [data-testid="stSidebar"] button {
+                display: none;
+            }
+            
+            /* 2. Hide the Top "Open Sidebar" Arrow (Just in case) */
+            [data-testid="collapsedControl"] {
+                display: none;
+            }
+
+            /* 3. Hide the 'Deploy' button */
             .stAppDeployButton {display:none;}
             
-            /* 2. Hide the 'Made with Streamlit' footer */
+            /* 4. Hide the 'Made with Streamlit' footer */
             footer {visibility: hidden;}
             
-            /* 3. Hide the 'Manage App' toolbar at the bottom */
+            /* 5. Hide the 'Manage App' toolbar */
             [data-testid="stToolbar"] {visibility: hidden;}
-            .viewerBadge_container__1QSob {display: none;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
@@ -128,7 +136,7 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR (RESTORED) ---
+# --- SIDEBAR (NO ARROW) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
@@ -146,20 +154,17 @@ with st.sidebar:
         st.stop()
     genai.configure(api_key=api_key)
     
-    st.markdown("---")
-    if st.button("🔄 Reset / New Project", use_container_width=True):
-        for key in list(st.session_state.keys()):
-            if key not in ['password_correct', 'used_key']: 
-                del st.session_state[key]
-        st.rerun()
+    # NOTE: Since we hid ALL buttons in sidebar via CSS to kill the arrow, 
+    # we cannot use standard st.button inside the sidebar comfortably. 
+    # I have moved the "Reset" button to the main page to ensure it works.
     
     st.markdown("---")
     st.caption("Secured by Google Cloud")
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: ROBUST GENERATOR (Traffic Fix) ---
+# --- HELPER: ROBUST GENERATOR ---
 def generate_safe(prompt, file_content):
-    # Expanded Model List: Tries Lite first (fastest), then others
+    # Expanded Model List
     models = [
         'gemini-2.0-flash-lite-001', 
         'gemini-1.5-flash', 
@@ -171,32 +176,34 @@ def generate_safe(prompt, file_content):
     
     for model_name in models:
         try:
-            # Mandatory 2s pause to respect Rate Limits
-            time.sleep(2)
+            # 5 Second Pause (Very Safe)
+            time.sleep(5)
             model = genai.GenerativeModel(model_name)
             return model.generate_content([prompt, file_content])
         except exceptions.ResourceExhausted:
-            status_placeholder.warning(f"🚦 Traffic on {model_name}. Switching lanes...")
+            status_placeholder.warning(f"🚦 Busy. Switching lines...")
             time.sleep(2) 
             continue
         except Exception:
             continue
             
-    # Final Retry
-    status_placeholder.warning("🚦 Servers busy. Waiting 10s for deep retry...")
-    time.sleep(10)
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash-8b') # Use lightest model
-        return model.generate_content([prompt, file_content])
-    except:
-        st.error("⚠️ Quota Exceeded. Please replace your API Key or wait a few minutes.")
-        return None
+    status_placeholder.error("❌ High Traffic. Please try again in 1 minute.")
+    return None
 
 # --- MAIN APP ---
 col_hero_1, col_hero_2 = st.columns([3, 1])
 with col_hero_1:
     st.title("🇮🇳 Tender Intelligence Suite")
     st.markdown("**Automated Analysis • Compliance Checks • Bid Drafting**")
+
+# Moved Reset Button Here (Because Sidebar buttons are hidden by CSS)
+with col_hero_2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔄 New Project"):
+        for key in list(st.session_state.keys()):
+            if key not in ['password_correct', 'used_key']: 
+                del st.session_state[key]
+        st.rerun()
 
 st.markdown("---")
 
