@@ -9,10 +9,12 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # Forces the Left Bar to stay open
 )
 
 # --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
+# This hides the "Manage App" button and the "Hamburger Menu"
+# BUT it leaves the Sidebar visible and working perfectly.
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -25,13 +27,17 @@ st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # --- 3. ACCESS CODE SYSTEM ---
 def get_valid_keys():
+    # 1. First, try to get the LIST of codes from Secrets
     try:
         keys = st.secrets.get("access_keys")
         if keys:
+            # If it's a single string, wrap it in a list
             if isinstance(keys, str): return [keys]
             return keys
     except:
         pass
+    
+    # 2. Fallback only if the list is missing (Safety net)
     return [st.secrets.get("APP_PASSWORD", "TenderKing2026")]
 
 def check_password():
@@ -40,6 +46,7 @@ def check_password():
 
     def password_entered():
         valid_keys = get_valid_keys()
+        # Check if the entered password matches ANY key in the list
         if st.session_state["password"] in valid_keys:
             st.session_state["password_correct"] = True
             st.session_state["used_key"] = st.session_state["password"] 
@@ -52,8 +59,10 @@ def check_password():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
         st.info("Authorized Personnel Only.")
-        # UPDATED TEXT HERE:
+        
+        # LOG IN INPUT
         st.text_input("Enter your access code", type="password", on_change=password_entered, key="password")
+        
         if "password_correct" in st.session_state:
             st.error("❌ Invalid Access Code.")
     return False
@@ -118,7 +127,7 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR (RESTORED THE "SYSTEM ONLINE" LOOK) ---
+# --- SIDEBAR (RESTORED THE PROFESSIONAL LOOK) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
