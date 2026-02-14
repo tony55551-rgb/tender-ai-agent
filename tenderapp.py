@@ -12,16 +12,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: HIDE ADMIN TOOLS ---
-# This specific CSS hides the "Manage App" button and the "Hamburger Menu"
-# BUT it leaves the Sidebar visible (I removed the code that was hiding it).
+# --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
             .stAppDeployButton {display:none;}
-            [data-testid="stHeader"] {z-index: -1;}
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
@@ -55,6 +52,7 @@ def check_password():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
         st.info("Authorized Personnel Only.")
+        # UPDATED TEXT HERE:
         st.text_input("Enter your access code", type="password", on_change=password_entered, key="password")
         if "password_correct" in st.session_state:
             st.error("❌ Invalid Access Code.")
@@ -120,12 +118,12 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR (RESTORED WITH COPYRIGHT) ---
+# --- SIDEBAR (RESTORED THE "SYSTEM ONLINE" LOOK) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
     
-    # User Info
+    # Display the Access Code used (masked or partial)
     user_key = st.session_state.get('used_key', 'Admin')
     st.caption(f"Logged in as: **{user_key}**")
     
@@ -148,12 +146,12 @@ with st.sidebar:
     
     st.markdown("---")
     st.caption("Secured by Google Cloud")
-    # COPYRIGHT RESTORED HERE
+    # BRANDING RESTORED
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
 # --- HELPER: ROBUST GENERATOR (Anti-Crash) ---
 def generate_safe(prompt, file_content):
-    # Try multiple models to find a free lane
+    # Try 4 different models to bypass traffic
     models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-lite-001', 'gemini-1.5-pro']
     
     status_placeholder = st.empty()
@@ -164,18 +162,18 @@ def generate_safe(prompt, file_content):
             return model.generate_content([prompt, file_content])
         except exceptions.ResourceExhausted:
             time.sleep(1)
-            continue 
+            continue # Try next model
         except Exception:
             continue
             
-    # Fallback with countdown
+    # If all fail, wait and retry
     status_placeholder.warning("🚦 High Traffic. Switching lines...")
     time.sleep(10)
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model.generate_content([prompt, file_content])
     except:
-        st.error("❌ Servers are currently busy. Please wait 2 minutes.")
+        st.error("❌ All AI servers are busy. Please wait 2 minutes.")
         return None
 
 # --- MAIN APP ---
