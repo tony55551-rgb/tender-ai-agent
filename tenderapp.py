@@ -9,10 +9,12 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # Forces the Left Bar to stay open
 )
 
 # --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
+# This hides the "Manage App" button and the "Hamburger Menu"
+# But keeps the Sidebar visible and usable.
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -52,8 +54,10 @@ def check_password():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
         st.info("Authorized Personnel Only.")
+        
         # UPDATED TEXT HERE:
         st.text_input("Enter your access code", type="password", on_change=password_entered, key="password")
+        
         if "password_correct" in st.session_state:
             st.error("❌ Invalid Access Code.")
     return False
