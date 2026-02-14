@@ -12,9 +12,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
-# I removed the code that broke the sidebar. 
-# Now it only hides the "Manage App" button and the Header/Footer.
+# --- 2. CSS HACKS: HIDE ADMIN TOOLS ---
+# This hides the "Manage App" button and the "Hamburger Menu"
+# But keeps the Sidebar visible and usable.
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -103,4 +103,208 @@ def create_pdf(summary, compliance, letter, chat_history):
         pdf.set_font("Arial", 'B', 16)
         pdf.cell(0, 10, "3. Q&A Notes", 0, 1)
         pdf.set_font("Arial", size=11)
-        for
+        for q, a in chat_history:
+            pdf.set_font("Arial", 'B', 11)
+            pdf.multi_cell(0, 6, f"Q: {clean(q)}")
+            pdf.set_font("Arial", size=11)
+            pdf.multi_cell(0, 6, f"A: {clean(a)}")
+            pdf.ln(3)
+
+    # 4. Draft Letter
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, "4. Draft Bid Letter", 0, 1)
+    pdf.set_font("Courier", size=10)
+    pdf.multi_cell(0, 5, clean(letter))
+
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.markdown("## 🏢 **TenderAI** Enterprise")
+    st.success(f"✅ User: {st.session_state.get('used_key', 'Admin')}")
+    
+    st.markdown("---")
+    language = st.selectbox("Output Language", ["English", "Hindi", "Telugu"])
+    
+    api_key = st.secrets.get("GOOGLE_API_KEY")
+    if not api_key:
+        st.error("⚠️ API Key missing!")
+        st.stop()
+    genai.configure(api_key=api_key)
+    
+    st.markdown("---")
+    if st.button("🔄 Reset / New Project", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            if key not in ['password_correct', 'used_key']: 
+                del st.session_state[key]
+        st.rerun()
+    
+    st.markdown("---")
+    st.caption("Secured by Google Cloud")
+    st.markdown("**© 2026 ynotAIagent bundles**") 
+
+# --- HELPER: ROBUST GENERATOR (Fixed Syntax) ---
+def generate_safe(prompt, file_content):
+    # We define the models list on one line to prevent syntax errors
+    models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-lite-001', 'gemini-1.5-pro']
+    
+    status_placeholder = st.empty()
+    
+    for model_name in models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            return model.generate_content([prompt, file_content])
+        except exceptions.ResourceExhausted:
+            time.sleep(1)
+            continue
+        except Exception:
+            continue
+            
+    # If all fail, show warning
+    status_placeholder.warning("🚦 High Traffic. Retrying with backup...")
+    time.sleep(5)
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        return model.generate_content([prompt, file_content])
+    except:
+        st.error("❌ Servers are busy. Please wait 1 minute.")
+        return None
+
+# --- MAIN APP ---
+col_hero_1, col_hero_2 = st.columns([3, 1])
+with col_hero_1:
+    st.title("🇮🇳 Tender Intelligence Suite")
+    st.markdown("**Automated Analysis • Compliance Checks • Bid Drafting**")
+
+st.markdown("---")
+
+# 1. Initialize Memory
+if "summary" not in st.session_state: st.session_state.summary = None
+if "compliance" not in st.session_state: st.session_state.compliance = None
+if "letter" not in st.session_state: st.session_state.letter = None
+if "chat_history" not in st.session_state: st.session_state.chat_history = []
+if "myfile" not in st.session_state: st.session_state.myfile = None
+
+# 2. File Uploader
+if st.session_state.myfile is None:
+    st.info("👋 Welcome. Please upload a Tender Document (PDF) to begin analysis.")
+    uploaded_file = st.file_uploader("Select Tender PDF", type="pdf", label_visibility="collapsed")
+    
+    if uploaded_file:
+        with st.spinner("🔄 Encrypting & Uploading to AI Core..."):
+            try:
+                with open("temp.pdf", "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                myfile = genai.upload_file("temp.pdf")
+                while myfile.state.name == "PROCESSING":
+                    time.sleep(1)
+                    myfile = genai.get_file(myfile.name)
+                
+                st.session_state.myfile = myfile
+                st.success("✅ Document Loaded Successfully")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
+
+else:
+    # 3. Dashboard
+    st.success(f"📂 Active Document: **{st.session_state.myfile.display_name}**")
+    
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Executive Summary", 
+        "✅ Compliance Matrix", 
+        "📝 Draft Bid Letter", 
+        "💬 AI Consultant", 
+        "📥 Export Report"
+    ])
+    
+    # --- TAB 1: SUMMARY ---
+    with tab1:
+        st.markdown("### 📋 Project Overview")
+        if st.session_state.summary:
+            st.markdown(st.session_state.summary)
+        else:
+            if st.button("🚀 Generate Summary", type="primary"):
+                with st.spinner("Analyzing..."):
+                    prompt = f"Extract Project Name, EMD (in Rs), Deadline, Turnover, and Experience. Translate to {language}. Replace symbol '₹' with 'Rs.'."
+                    res = generate_safe(prompt, st.session_state.myfile)
+                    if res:
+                        st.session_state.summary = res.text
+                        st.rerun()
+
+    # --- TAB 2: COMPLIANCE ---
+    with tab2:
+        st.markdown("### ✅ Qualification Check")
+        if st.session_state.compliance:
+            st.markdown(st.session_state.compliance)
+        else:
+            if st.button("🔍 Scan for Compliance", type="primary"):
+                with st.spinner("Scanning..."):
+                    prompt = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status. Replace symbol '₹' with 'Rs.'."
+                    res = generate_safe(prompt, st.session_state.myfile)
+                    if res:
+                        st.session_state.compliance = res.text
+                        st.rerun()
+
+    # --- TAB 3: LETTER ---
+    with tab3:
+        st.markdown("### ✍️ Bid Submission Letter")
+        if st.session_state.letter:
+            st.text_area("Final Draft", st.session_state.letter, height=450)
+        else:
+            if st.button("📝 Write Letter", type="primary"):
+                with st.spinner("Drafting..."):
+                    prompt = f"Write a formal Bid Submission Letter in {language}."
+                    res = generate_safe(prompt, st.session_state.myfile)
+                    if res:
+                        st.session_state.letter = res.text
+                        st.rerun()
+
+    # --- TAB 4: CHAT ---
+    with tab4:
+        st.markdown("### 💬 Ask the Consultant")
+        for q, a in st.session_state.chat_history:
+            st.markdown(f"**You:** {q}")
+            st.info(f"**AI:** {a}")
+        
+        st.markdown("---")
+        col_q, col_btn = st.columns([4,1])
+        with col_q:
+            user_q = st.text_input("Ask a question:", placeholder="e.g., Is Joint Venture allowed?")
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Ask", type="primary", use_container_width=True):
+                if user_q:
+                    with st.spinner("Thinking..."):
+                        res = generate_safe(f"Answer in {language}. Replace '₹' with 'Rs.': {user_q}", st.session_state.myfile)
+                        if res:
+                            st.session_state.chat_history.append((user_q, res.text))
+                            st.rerun()
+
+    # --- TAB 5: DOWNLOAD ---
+    with tab5:
+        st.markdown("### 📥 Final Report")
+        if st.session_state.summary and st.session_state.compliance and st.session_state.letter:
+            if st.button("📄 Compile PDF Report", type="primary"):
+                with st.spinner("Building PDF..."):
+                    try:
+                        pdf_bytes = create_pdf(
+                            st.session_state.summary,
+                            st.session_state.compliance,
+                            st.session_state.letter,
+                            st.session_state.chat_history
+                        )
+                        st.download_button(
+                            label="⬇️ Download PDF Now",
+                            data=pdf_bytes,
+                            file_name="Tender_Analysis_Report.pdf",
+                            mime="application/pdf"
+                        )
+                        st.success("Ready for download!")
+                    except Exception as e:
+                        st.error(f"PDF Error: {e}")
+        else:
+            st.warning("⚠️ Complete Analysis first.")
