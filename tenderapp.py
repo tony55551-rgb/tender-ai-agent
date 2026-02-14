@@ -12,18 +12,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CSS HACKS: LOCK SIDEBAR & HIDE ADMIN ---
-# This CSS performs surgery on the interface to remove specific buttons.
+# --- 2. CSS HACKS: PERMANENT SIDEBAR & HIDDEN ADMIN ---
 hide_st_style = """
             <style>
-            /* 1. Hide the "Close Sidebar" Arrow Button */
-            [data-testid="stSidebar"] button {
-                display: none;
+            /* 1. HIDE THE SIDEBAR COLLAPSE BUTTON (The << Arrow) */
+            [data-testid="stSidebarCollapseButton"] {
+                display: none !important;
             }
             
-            /* 2. Hide the Top "Open Sidebar" Arrow (Just in case) */
+            /* 2. Hide the top left 'collapsed' control just in case */
             [data-testid="collapsedControl"] {
-                display: none;
+                display: none !important;
             }
 
             /* 3. Hide the 'Deploy' button */
@@ -136,7 +135,7 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR (NO ARROW) ---
+# --- SIDEBAR (LOCKED OPEN) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
@@ -154,41 +153,44 @@ with st.sidebar:
         st.stop()
     genai.configure(api_key=api_key)
     
-    # NOTE: Since we hid ALL buttons in sidebar via CSS to kill the arrow, 
-    # we cannot use standard st.button inside the sidebar comfortably. 
-    # I have moved the "Reset" button to the main page to ensure it works.
-    
     st.markdown("---")
     st.caption("Secured by Google Cloud")
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: ROBUST GENERATOR ---
+# --- HELPER: CACHED GENERATOR (Saves Quota) ---
+# This function remembers the answer. If you ask the same thing twice, 
+# it returns the saved answer instantly without calling Google.
+@st.cache_data(show_spinner=False)
+def get_ai_response(prompt, _file_content, model_name="gemini-1.5-flash"):
+    model = genai.GenerativeModel(model_name)
+    # 3-Second safety delay
+    time.sleep(3)
+    return model.generate_content([prompt, _file_content]).text
+
 def generate_safe(prompt, file_content):
-    # Expanded Model List
-    models = [
-        'gemini-2.0-flash-lite-001', 
-        'gemini-1.5-flash', 
-        'gemini-1.5-flash-8b', 
-        'gemini-1.5-pro'
-    ]
-    
     status_placeholder = st.empty()
     
-    for model_name in models:
-        try:
-            # 5 Second Pause (Very Safe)
-            time.sleep(5)
-            model = genai.GenerativeModel(model_name)
-            return model.generate_content([prompt, file_content])
-        except exceptions.ResourceExhausted:
-            status_placeholder.warning(f"🚦 Busy. Switching lines...")
-            time.sleep(2) 
-            continue
-        except Exception:
-            continue
-            
-    status_placeholder.error("❌ High Traffic. Please try again in 1 minute.")
-    return None
+    # Try the Lite model first (Fastest)
+    try:
+        return get_ai_response(prompt, file_content, "gemini-2.0-flash-lite-001")
+    except Exception:
+        pass
+        
+    # Try Flash (Standard)
+    try:
+        status_placeholder.info("🔄 Optimizing connection...")
+        return get_ai_response(prompt, file_content, "gemini-1.5-flash")
+    except Exception:
+        pass
+
+    # Final Attempt
+    try:
+        status_placeholder.warning("🚦 High traffic. Retrying in 5s...")
+        time.sleep(5)
+        return get_ai_response(prompt, file_content, "gemini-1.5-flash-8b")
+    except:
+        status_placeholder.error("❌ High Traffic Error. Please wait 2 minutes.")
+        return None
 
 # --- MAIN APP ---
 col_hero_1, col_hero_2 = st.columns([3, 1])
@@ -196,10 +198,12 @@ with col_hero_1:
     st.title("🇮🇳 Tender Intelligence Suite")
     st.markdown("**Automated Analysis • Compliance Checks • Bid Drafting**")
 
-# Moved Reset Button Here (Because Sidebar buttons are hidden by CSS)
+# Reset Button (Top Right)
 with col_hero_2:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🔄 New Project"):
+        # Clear cache and session state
+        st.cache_data.clear()
         for key in list(st.session_state.keys()):
             if key not in ['password_correct', 'used_key']: 
                 del st.session_state[key]
@@ -260,7 +264,7 @@ else:
                     prompt = f"Extract Project Name, EMD (in Rs), Deadline, Turnover, and Experience. Translate to {language}. Replace symbol '₹' with 'Rs.'."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
-                        st.session_state.summary = res.text
+                        st.session_state.summary = res
                         st.rerun()
 
     # --- TAB 2: COMPLIANCE ---
@@ -274,7 +278,7 @@ else:
                     prompt = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status. Replace symbol '₹' with 'Rs.'."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
-                        st.session_state.compliance = res.text
+                        st.session_state.compliance = res
                         st.rerun()
 
     # --- TAB 3: LETTER ---
@@ -288,7 +292,7 @@ else:
                     prompt = f"Write a formal Bid Submission Letter in {language}."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
-                        st.session_state.letter = res.text
+                        st.session_state.letter = res
                         st.rerun()
 
     # --- TAB 4: CHAT ---
@@ -309,7 +313,7 @@ else:
                     with st.spinner("Thinking..."):
                         res = generate_safe(f"Answer in {language}. Replace '₹' with 'Rs.': {user_q}", st.session_state.myfile)
                         if res:
-                            st.session_state.chat_history.append((user_q, res.text))
+                            st.session_state.chat_history.append((user_q, res))
                             st.rerun()
 
     # --- TAB 5: DOWNLOAD ---
