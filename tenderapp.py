@@ -9,10 +9,12 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # Forces the Left Bar to open by default
 )
 
-# --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
+# --- 2. CSS HACKS: HIDE ADMIN TOOLS ---
+# This hides the "Manage App" button, Hamburger Menu, and Footer
+# But keeps the Sidebar visible and professional.
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -23,16 +25,21 @@ hide_st_style = """
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- 3. ACCESS CODE SYSTEM ---
+# --- 3. SECURE ACCESS SYSTEM (No Hardcoded Passwords) ---
 def get_valid_keys():
+    # 1. Try to get the LIST of codes from Secrets
     try:
         keys = st.secrets.get("access_keys")
         if keys:
+            # If it's a single string, wrap it in a list
             if isinstance(keys, str): return [keys]
             return keys
     except:
         pass
-    return [st.secrets.get("APP_PASSWORD", "TenderKing2026")]
+    
+    # 2. IF NO SECRETS FOUND: Stop the app.
+    # This prevents unauthorized access if secrets aren't set up.
+    return [] 
 
 def check_password():
     if st.session_state.get("password_correct", False):
@@ -40,6 +47,13 @@ def check_password():
 
     def password_entered():
         valid_keys = get_valid_keys()
+        
+        # Security Check: If no keys are configured in Secrets
+        if not valid_keys:
+            st.error("⚠️ System Error: Access Keys not configured in Secrets.")
+            return
+
+        # Check if the entered password matches ANY key in the list
         if st.session_state["password"] in valid_keys:
             st.session_state["password_correct"] = True
             st.session_state["used_key"] = st.session_state["password"] 
@@ -52,10 +66,13 @@ def check_password():
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
         st.info("Authorized Personnel Only.")
-        # UPDATED TEXT HERE:
+        
+        # INPUT FIELD
         st.text_input("Enter your access code", type="password", on_change=password_entered, key="password")
+        
         if "password_correct" in st.session_state:
             st.error("❌ Invalid Access Code.")
+            
     return False
 
 if not check_password():
@@ -71,6 +88,7 @@ class PDF(FPDF):
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
+        # COPYRIGHT IN PDF
         self.cell(0, 10, f'© 2026 ynotAIagent bundles | Page {self.page_no()}', 0, 0, 'C')
 
 def create_pdf(summary, compliance, letter, chat_history):
@@ -118,12 +136,12 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR (RESTORED THE "SYSTEM ONLINE" LOOK) ---
+# --- PROFESSIONAL SIDEBAR ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
     
-    # Display the Access Code used (masked or partial)
+    # Display User Info
     user_key = st.session_state.get('used_key', 'Admin')
     st.caption(f"Logged in as: **{user_key}**")
     
@@ -140,18 +158,19 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🔄 Reset / New Project", use_container_width=True):
         for key in list(st.session_state.keys()):
+            # Keep login details, clear everything else
             if key not in ['password_correct', 'used_key']: 
                 del st.session_state[key]
         st.rerun()
     
     st.markdown("---")
     st.caption("Secured by Google Cloud")
-    # BRANDING RESTORED
+    # COPYRIGHT IN SIDEBAR
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: ROBUST GENERATOR (Anti-Crash) ---
+# --- HELPER: ROBUST GENERATOR (Traffic Fix) ---
 def generate_safe(prompt, file_content):
-    # Try 4 different models to bypass traffic
+    # Try 4 different models to find a free lane
     models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-lite-001', 'gemini-1.5-pro']
     
     status_placeholder = st.empty()
@@ -176,7 +195,7 @@ def generate_safe(prompt, file_content):
         st.error("❌ All AI servers are busy. Please wait 2 minutes.")
         return None
 
-# --- MAIN APP ---
+# --- MAIN APP LAYOUT ---
 col_hero_1, col_hero_2 = st.columns([3, 1])
 with col_hero_1:
     st.title("🇮🇳 Tender Intelligence Suite")
