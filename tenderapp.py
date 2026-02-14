@@ -71,7 +71,7 @@ if uploaded_file:
                 myfile = genai.upload_file("temp_tender.pdf")
                 time.sleep(3) # Wait for processing
 
-                model = genai.GenerativeModel('gemini-1.5-flash-latest') # Using the fast model
+                model = genai.GenerativeModel('gemini-1.5-flash')# Using the fast model
 
                 # 1. Extract Data
                 prompt_extract = """
