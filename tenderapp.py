@@ -4,7 +4,7 @@ import time
 from google.api_core import exceptions
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="TenderAI Lite", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="TenderAI Manual", page_icon="🎛️", layout="wide")
 
 # --- AUTHENTICATION ---
 MASTER_PASSWORD = st.secrets.get("APP_PASSWORD", "TenderKing2026") 
@@ -45,31 +45,28 @@ with st.sidebar:
                 del st.session_state[key]
         st.rerun()
 
-# --- HELPER: ROBUST GENERATOR WITH COUNTDOWN ---
-def generate_smart(model, prompt, file_content, status_text):
-    """Retries with a visual countdown if the server is busy."""
-    try:
-        return model.generate_content([prompt, file_content])
-    except exceptions.ResourceExhausted:
-        # If busy, we wait 30 seconds with a visual timer
-        status_text.warning("🚦 Server Busy. Switching to queue...")
-        progress_bar = status_text.progress(0)
-        for i in range(30):
-            time.sleep(1)
-            progress_bar.progress((i + 1) / 30)
-        
-        status_text.info("🔄 Retrying now...")
+# --- HELPER: GENERATOR WITH FALLBACK ---
+def generate_safe(prompt, file_content):
+    """Tries to generate content using the best available model."""
+    # List of models to try (Best to Lite)
+    models_to_try = ['gemini-1.5-flash', 'gemini-2.0-flash-lite-001', 'gemini-1.5-pro']
+    
+    for model_name in models_to_try:
         try:
-            return model.generate_content([prompt, file_content]) # Retry 1
-        except:
-            status_text.error("❌ Server is too busy right now. Please try again in 5 minutes.")
-            return None
-    except Exception as e:
-        status_text.error(f"Error: {e}")
-        return None
+            model = genai.GenerativeModel(model_name)
+            return model.generate_content([prompt, file_content])
+        except exceptions.ResourceExhausted:
+            st.warning(f"⚠️ {model_name} is busy. Trying next model...")
+            time.sleep(2)
+            continue # Try next model
+        except Exception:
+            continue # If model not found, try next
+            
+    st.error("❌ All models are busy right now. Please wait 1 minute.")
+    return None
 
 # --- MAIN APP ---
-st.title("⚡ AI Tender Assistant (Lite Speed)")
+st.title("🇮🇳 AI Tender Assistant (Manual Mode)")
 
 # 1. Initialize Memory
 if "summary" not in st.session_state: st.session_state.summary = None
@@ -94,68 +91,63 @@ if uploaded_file:
                     myfile = genai.get_file(myfile.name)
                 
                 st.session_state.myfile = myfile
-                st.success("File Ready! Click 'Run Analysis' below.")
+                st.success("File Ready! Select a Tab below.")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
 
-    # 3. The "Run" Button
-    if st.session_state.summary is None and st.session_state.myfile:
-        if st.button("🚀 Run Analysis (Lite Mode)"):
-            # SWITCHING TO THE LITE MODEL
-            model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
-            
-            status_text = st.empty()
-            
-            # --- STEP A: SUMMARY ---
-            status_text.text("1/3 Generating Summary...")
-            prompt1 = f"Extract Project Name, EMD, Deadline, Turnover, and Experience. Translate to {language}."
-            res1 = generate_smart(model, prompt1, st.session_state.myfile, status_text)
-            if res1: st.session_state.summary = res1.text
-            
-            time.sleep(2) # Short breath
-
-            # --- STEP B: COMPLIANCE ---
-            status_text.text("2/3 Checking Compliance...")
-            prompt2 = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status."
-            res2 = generate_smart(model, prompt2, st.session_state.myfile, status_text)
-            if res2: st.session_state.compliance = res2.text
-
-            time.sleep(2) # Short breath
-
-            # --- STEP C: LETTER ---
-            status_text.text("3/3 Drafting Letter...")
-            prompt3 = f"Write a formal Bid Submission Letter in {language}."
-            res3 = generate_smart(model, prompt3, st.session_state.myfile, status_text)
-            if res3: st.session_state.letter = res3.text
-            
-            status_text.success("✅ Analysis Complete!")
-            time.sleep(1)
-            st.rerun()
-
-# 4. Display Results
-if st.session_state.summary:
+    # 3. The Manual Tabs
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary", "✅ Compliance", "📝 Draft Letter", "💬 Chat"])
     
+    # --- TAB 1: SUMMARY ---
     with tab1:
-        st.subheader(f"Executive Summary ({language})")
-        st.markdown(st.session_state.summary)
-    
+        st.header(f"Executive Summary ({language})")
+        if st.session_state.summary:
+            st.markdown(st.session_state.summary)
+        else:
+            if st.button("Generate Summary"):
+                with st.spinner("Analyzing..."):
+                    prompt = f"Extract Project Name, EMD, Deadline, Turnover, and Experience. Translate to {language}."
+                    res = generate_safe(prompt, st.session_state.myfile)
+                    if res:
+                        st.session_state.summary = res.text
+                        st.rerun()
+
+    # --- TAB 2: COMPLIANCE ---
     with tab2:
-        st.subheader("Compliance Matrix")
-        st.markdown(st.session_state.compliance)
-    
+        st.header("Compliance Matrix")
+        if st.session_state.compliance:
+            st.markdown(st.session_state.compliance)
+        else:
+            if st.button("Generate Matrix"):
+                with st.spinner("Scanning..."):
+                    prompt = f"Create a table of Technical & Qualification Criteria. Columns: Requirement ({language}), Page No, Status."
+                    res = generate_safe(prompt, st.session_state.myfile)
+                    if res:
+                        st.session_state.compliance = res.text
+                        st.rerun()
+
+    # --- TAB 3: LETTER ---
     with tab3:
-        st.subheader("Bid Submission Letter")
-        st.text_area("Copy this:", st.session_state.letter, height=400)
-    
+        st.header("Bid Submission Letter")
+        if st.session_state.letter:
+            st.text_area("Copy this:", st.session_state.letter, height=400)
+        else:
+            if st.button("Draft Letter"):
+                with st.spinner("Drafting..."):
+                    prompt = f"Write a formal Bid Submission Letter in {language}."
+                    res = generate_safe(prompt, st.session_state.myfile)
+                    if res:
+                        st.session_state.letter = res.text
+                        st.rerun()
+
+    # --- TAB 4: CHAT ---
     with tab4:
-        st.subheader("Ask the Tender")
+        st.header("Ask the Tender")
         user_q = st.text_input("Ask a question:")
         if user_q:
             try:
-                # Chat uses the Lite model too for speed
-                model = genai.GenerativeModel('gemini-2.0-flash-lite-001')
+                model = genai.GenerativeModel('gemini-1.5-flash')
                 res = model.generate_content([f"Answer in {language}: {user_q}", st.session_state.myfile])
                 st.write(res.text)
             except:
-                st.error("Server Busy. Try again in a moment.")
+                st.warning("Server busy. Wait 10s.")
