@@ -9,14 +9,21 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # This asks it to be open, but the arrow allows re-opening
 )
 
-# --- 2. CSS HACKS: HIDE ADMIN TOOLS ONLY ---
+# --- 2. CSS HACKS: THE "SMART" GHOST MODE ---
+# FIX: We do NOT hide the 'header' anymore, so the Sidebar Arrow (>) remains visible.
+# We ONLY hide the 'Deploy' button and the Footer.
 hide_st_style = """
             <style>
+            /* 1. Hide the 'Deploy' button specifically */
             .stAppDeployButton {display:none;}
+            
+            /* 2. Hide the 'Made with Streamlit' footer */
             footer {visibility: hidden;}
+            
+            /* 3. Hide the 'Manage App' toolbar at the bottom */
             [data-testid="stToolbar"] {visibility: hidden;}
             .viewerBadge_container__1QSob {display: none;}
             </style>
@@ -121,7 +128,7 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR ---
+# --- SIDEBAR (RESTORED) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
     st.success("✅ System Online")
@@ -150,36 +157,39 @@ with st.sidebar:
     st.caption("Secured by Google Cloud")
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
-# --- HELPER: SLOW & STEADY GENERATOR ---
+# --- HELPER: ROBUST GENERATOR (Traffic Fix) ---
 def generate_safe(prompt, file_content):
-    # We use ONLY the Lite model first because it's the fastest and has highest limits
-    models = ['gemini-2.0-flash-lite-001', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    # Expanded Model List: Tries Lite first (fastest), then others
+    models = [
+        'gemini-2.0-flash-lite-001', 
+        'gemini-1.5-flash', 
+        'gemini-1.5-flash-8b', 
+        'gemini-1.5-pro'
+    ]
     
-    status_box = st.empty()
+    status_placeholder = st.empty()
     
     for model_name in models:
         try:
-            # Add a small delay BEFORE asking to let the server breathe
-            time.sleep(2) 
+            # Mandatory 2s pause to respect Rate Limits
+            time.sleep(2)
             model = genai.GenerativeModel(model_name)
             return model.generate_content([prompt, file_content])
-            
         except exceptions.ResourceExhausted:
-            status_box.warning(f"🚦 Traffic on {model_name}. Switching lanes (Wait 5s)...")
-            time.sleep(5) # Mandatory wait
+            status_placeholder.warning(f"🚦 Traffic on {model_name}. Switching lanes...")
+            time.sleep(2) 
             continue
-            
         except Exception:
             continue
             
-    # Final Hail Mary
-    status_box.error("❌ Servers are full. Waiting 15 seconds to retry automatically...")
-    time.sleep(15)
+    # Final Retry
+    status_placeholder.warning("🚦 Servers busy. Waiting 10s for deep retry...")
+    time.sleep(10)
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash-8b') # Use lightest model
         return model.generate_content([prompt, file_content])
     except:
-        st.error("⚠️ Google API Quota Exceeded. Please try again in 2 minutes.")
+        st.error("⚠️ Quota Exceeded. Please replace your API Key or wait a few minutes.")
         return None
 
 # --- MAIN APP ---
@@ -239,7 +249,7 @@ else:
             st.markdown(st.session_state.summary)
         else:
             if st.button("🚀 Generate Summary", type="primary"):
-                with st.spinner("Analyzing... (This may take 10s to clear traffic)"):
+                with st.spinner("Analyzing..."):
                     prompt = f"Extract Project Name, EMD (in Rs), Deadline, Turnover, and Experience. Translate to {language}. Replace symbol '₹' with 'Rs.'."
                     res = generate_safe(prompt, st.session_state.myfile)
                     if res:
