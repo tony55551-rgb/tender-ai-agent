@@ -1,102 +1,45 @@
 import streamlit as st
 import google.generativeai as genai
-import time
 import os
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="TenderAI Pro", page_icon="🔒", layout="centered")
+st.title("👨‍⚕️ App Doctor")
 
-# --- AUTHENTICATION (The Lock) ---
-# We look for the password in the cloud secrets, or default to a simple one
-MASTER_PASSWORD = st.secrets.get("APP_PASSWORD", "admin123") 
+# 1. Check Library Version
+st.write(f"**Google Library Version:** `{genai.__version__}`")
+st.write("(We need version `0.7.0` or higher for Flash)")
 
-def check_password():
-    """Returns True if the user had the correct password."""
-    def password_entered():
-        if st.session_state["password"] == MASTER_PASSWORD:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password
-        else:
-            st.session_state["password_correct"] = False
-
-    if st.session_state.get("password_correct", False):
-        return True
-
-    st.title("🔒 TenderAI Login")
-    st.text_input("Enter Access Key", type="password", on_change=password_entered, key="password")
-    if "password_correct" in st.session_state:
-        st.error("❌ Access Denied")
-    return False
-
-if not check_password():
-    st.stop()  # Stop here if not logged in
-
-# --- MAIN APP (Only runs after login) ---
-st.title("🇮🇳 AI Tender Assistant (Pro)")
-st.caption("Secure Enterprise Edition")
-
-# --- API KEY HANDLING ---
-# 1. Try to get key from Cloud Secrets (Best for production)
-# 2. If not found, ask user (Best for testing)
+# 2. Check API Key
 api_key = st.secrets.get("GOOGLE_API_KEY")
-
 if not api_key:
-    with st.sidebar:
-        api_key = st.text_input("Enter Google API Key", type="password")
-
-if not api_key:
-    st.warning("⚠️ API Key required to proceed.")
+    st.error("❌ No API Key found in Secrets!")
     st.stop()
 
-# Configure Gemini
+genai.configure(api_key=api_key)
+
+# 3. List Available Models
+st.subheader("📋 Models Available to this Server:")
 try:
-    genai.configure(api_key=api_key)
-except Exception as e:
-    st.error(f"Key Error: {e}")
-
-# --- FILE UPLOAD ---
-uploaded_file = st.file_uploader("Upload Tender PDF", type="pdf")
-
-if uploaded_file:
-    # Save temp file
-    with open("temp_tender.pdf", "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    models = genai.list_models()
+    found_flash = False
+    for m in models:
+        if 'generateContent' in m.supported_generation_methods:
+            st.write(f"- `{m.name}`")
+            if "flash" in m.name:
+                found_flash = True
     
-    st.success("File Uploaded! ✅")
+    if found_flash:
+        st.success("✅ Flash model found! We just need to copy the exact name above.")
+    else:
+        st.warning("⚠️ No Flash model found. We might need to use 'gemini-pro'.")
 
-    if st.button("Analyze Tender"):
-        with st.spinner("🧠 Analyzing Document..."):
-            try:
-                # Upload to Gemini
-                myfile = genai.upload_file("temp_tender.pdf")
-                time.sleep(3) # Wait for processing
+except Exception as e:
+    st.error(f"Error listing models: {e}")
 
-                model = genai.GenerativeModel('gemini-1.5-flash')# Using the fast model
-
-                # 1. Extract Data
-                prompt_extract = """
-                Extract these details into a Markdown Table:
-                - Project Name
-                - Estimated Cost
-                - EMD Amount
-                - Bid Submission Deadline
-                - Financial Turnover Required
-                - Technical Experience Required
-                """
-                response = model.generate_content([prompt_extract, myfile])
-                st.subheader("📊 Executive Summary")
-                st.markdown(response.text)
-                
-                # 2. Draft Letter
-                st.divider()
-                st.subheader("📝 Bid Submission Letter")
-                prompt_letter = """
-                Write a formal Bid Submission Cover Letter for this tender. 
-                Use professional Indian Business English.
-                Mention we accept all terms and conditions.
-                """
-                letter = model.generate_content([prompt_letter, myfile])
-                st.text_area("Copy your letter:", letter.text, height=400)
-                
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+# 4. Test Generation
+if st.button("Test Connection"):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content("Hello")
+        st.success(f"✅ It works! Response: {response.text}")
+    except Exception as e:
+        st.error(f"❌ Test Failed: {e}")
