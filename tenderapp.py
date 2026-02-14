@@ -9,30 +9,67 @@ st.set_page_config(
     page_title="TenderAI Enterprise",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # Forces sidebar open on load
 )
 
-# --- 2. HIDE STREAMLIT BRANDING & ADD CUSTOM FOOTER ---
+# --- 2. CSS HACKS: LOCK SIDEBAR & HIDE ADMIN TOOLS ---
+# This CSS does 3 things:
+# 1. Hides the top right menu (Hamburger).
+# 2. Hides the "Manage App" footer.
+# 3. Hides the "X" button on the sidebar so users CANNOT close it.
 hide_st_style = """
             <style>
+            /* Hide Streamlit Menu and Footer */
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
+            
+            /* Hide the "Manage App" button specific to Streamlit Cloud */
             .stAppDeployButton {display:none;}
+            
+            /* LOCK SIDEBAR OPEN: Hide the collapse button */
+            [data-testid="stSidebar"] {
+                min-width: 300px !important;
+            }
+            [data-testid="collapsedControl"] {
+                display: none;
+            }
+            section[data-testid="stSidebar"] button {
+                display: none;
+            }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- 3. AUTHENTICATION ---
-MASTER_PASSWORD = st.secrets.get("APP_PASSWORD", "TenderKing2026") 
+# --- 3. VOUCHER SYSTEM (Dynamic Access) ---
+# We look for a LIST of passwords in secrets. 
+# If not found, we default to the Master Password.
+def get_valid_keys():
+    # Try to get list from secrets, otherwise fallback to single password
+    try:
+        # Check for list format first
+        keys = st.secrets.get("access_keys")
+        if keys:
+            # If it's a string (one password), make it a list
+            if isinstance(keys, str):
+                return [keys]
+            return keys # It's already a list
+    except:
+        pass
+    
+    # Fallback to the old simple password
+    return [st.secrets.get("APP_PASSWORD", "TenderKing2026")]
 
 def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
     def password_entered():
-        if st.session_state["password"] == MASTER_PASSWORD:
+        valid_keys = get_valid_keys()
+        if st.session_state["password"] in valid_keys:
             st.session_state["password_correct"] = True
+            # We store WHICH key was used (for tracking)
+            st.session_state["used_key"] = st.session_state["password"] 
             del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
@@ -40,17 +77,20 @@ def check_password():
     # Professional Login Screen
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🔒 TenderAI Secure Access</h1>", unsafe_allow_html=True)
-        st.info("This is a restricted enterprise portal. Please authorize yourself.")
-        st.text_input("Enter Access Key", type="password", on_change=password_entered, key="password")
+        st.info("Enter your One-Time Access Voucher to begin.")
+        st.text_input("Voucher Code", type="password", on_change=password_entered, key="password")
+        
         if "password_correct" in st.session_state:
-            st.error("❌ Access Denied. Contact Administrator.")
+            st.error("❌ Invalid or Expired Voucher.")
+            
     return False
 
 if not check_password():
     st.stop()
 
-# --- PDF GENERATOR WITH BRANDING ---
+# --- PDF GENERATOR ---
 class PDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 12)
@@ -60,7 +100,6 @@ class PDF(FPDF):
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
-        # BRANDING IN PDF
         self.cell(0, 10, f'© 2026 ynotAIagent bundles | Page {self.page_no()}', 0, 0, 'C')
 
 def create_pdf(summary, compliance, letter, chat_history):
@@ -108,10 +147,10 @@ def create_pdf(summary, compliance, letter, chat_history):
 
     return pdf.output(dest='S').encode('latin-1')
 
-# --- SIDEBAR WITH BRANDING ---
+# --- SIDEBAR (Locked Open) ---
 with st.sidebar:
     st.markdown("## 🏢 **TenderAI** Enterprise")
-    st.success("✅ System Online")
+    st.success(f"✅ Access Granted\n\nUser: {st.session_state.get('used_key', 'Admin')}")
     
     st.markdown("---")
     st.markdown("### ⚙️ **Configuration**")
@@ -126,12 +165,11 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🔄 Reset / New Project", use_container_width=True):
         for key in list(st.session_state.keys()):
-            if key != 'password_correct': 
+            if key not in ['password_correct', 'used_key']: 
                 del st.session_state[key]
         st.rerun()
     
     st.markdown("---")
-    # BRANDING IN SIDEBAR
     st.caption("Secured by Google Cloud")
     st.markdown("**© 2026 ynotAIagent bundles**") 
 
@@ -150,7 +188,7 @@ def generate_safe(prompt, file_content):
     st.error("❌ High Traffic. Please wait 60s and try again.")
     return None
 
-# --- MAIN APP LAYOUT ---
+# --- MAIN APP ---
 col_hero_1, col_hero_2 = st.columns([3, 1])
 with col_hero_1:
     st.title("🇮🇳 Tender Intelligence Suite")
